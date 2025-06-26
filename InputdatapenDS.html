@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handwriting Animation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+        }
+        #animationContainer {
+            width: 650px; /* Отступы по 30px с каждой стороны */
+            height: 650px; /* Отступы по 30px сверху и снизу */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 5px; /* Отступы */
+        }
+        #animationCanvas {
+            border: 2px solid #000;
+            background-color: #f9f9f9;
+            display: block; /* Показываем холст по умолчанию */
+            width: 100%; /* Ширина холста равна ширине контейнера */
+            height: 100%; /* Высота холста равна высоте контейнера */
+        }
+        #inputButton {
+            margin-top: 0px;
+            padding: 5px 5px;
+            font-size: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #inputButton:active {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+    <input type="file" id="inputButton" accept=".xls, .xlsx" multiple>
+    <div id="animationContainer">
+        <canvas id="animationCanvas"></canvas>
+    </div>
+
+    <!-- Подключение библиотеки XLSX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+
+    <script>
+        const animationCanvas = document.getElementById('animationCanvas');
+        const ctx = animationCanvas.getContext('2d');
+        let animations = []; // Массив для хранения данных и анимаций
+        let currentAnimationIndex = -1; // Индекс текущей анимации
+
+        // Устанавливаем размер холста
+        function resizeCanvas() {
+            animationCanvas.width = animationCanvas.offsetWidth; // Ширина холста равна ширине контейнера
+            animationCanvas.height = animationCanvas.offsetHeight; // Высота холста равна высоте контейнера
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Обработчик загрузки файлов
+        document.getElementById('inputButton').addEventListener('change', (e) => {
+            const files = e.target.files; // Получаем выбранные файлы
+            if (!files || files.length === 0) return;
+
+            // Очищаем массив перед загрузкой новых файлов
+            animations = [];
+
+            // Обрабатываем каждый файл
+            Array.from(files).forEach((file) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const data = new Uint8Array(event.target.result); // Чтение файла как бинарные данные
+                    const workbook = XLSX.read(data, { type: 'array' }); // Парсинг XLS-файла
+                    const sheetName = workbook.SheetNames[0]; // Получаем имя первого листа
+                    const sheet = workbook.Sheets[sheetName]; // Получаем данные листа
+                    const jsonData = XLSX.utils.sheet_to_json(sheet); // Преобразуем данные в JSON
+
+                    // Преобразуем JSON в массив точек
+                    const points = jsonData.map(row => ({
+                        x: row.X,
+                        y: row.Y,
+                        time: row['Time (ms)'],
+                        event: row.Event
+                    }));
+
+                    // Добавляем данные в массив анимаций
+                    animations.push({
+                        name: file.name,
+                        points: points
+                    });
+
+                    // Активируем функциональность после загрузки всех файлов
+                    if (animations.length === files.length) {
+                        currentAnimationIndex = 0; // Устанавливаем индекс первой анимации
+                        showAnimation(currentAnimationIndex); // Показываем первую анимацию
+                    }
+                };
+                reader.readAsArrayBuffer(file); // Чтение файла как ArrayBuffer
+            });
+        });
+
+        // Обработчик событий клавиатуры
+        document.addEventListener('keydown', (e) => {
+            if (animations.length === 0) return; // Если анимаций нет, ничего не делаем
+
+            switch (e.key) {
+                case 'ArrowLeft': // Клавиша "Влево"
+                    if (currentAnimationIndex > 0) {
+                        currentAnimationIndex--;
+                        showAnimation(currentAnimationIndex);
+                    }
+                    break;
+                case 'ArrowRight': // Клавиша "Вправо"
+                    if (currentAnimationIndex < animations.length - 1) {
+                        currentAnimationIndex++;
+                        showAnimation(currentAnimationIndex);
+                    }
+                    break;
+            }
+        });
+
+        // Функция для отображения анимации
+        function showAnimation(index) {
+            const animation = animations[index];
+            if (!animation) return;
+
+            // Очистка холста перед началом анимации
+            ctx.clearRect(0, 0, animationCanvas.width, animationCanvas.height);
+
+            // Запуск анимации
+            startAnimation(animation.points);
+        }
+
+        // Функция для воспроизведения анимации
+        function startAnimation(points) {
+            let index = 0; // Индекс текущей точки
+
+            function animate() {
+                if (index >= points.length) {
+                    return; // Остановка анимации
+                }
+
+                const point = points[index];
+                if (point.event === 'start') {
+                    ctx.beginPath(); // Начало нового пути
+                    ctx.moveTo(point.x, point.y); // Перемещение к начальной точки
+                    ctx.strokeStyle = '#000000'; // Цвет линии
+                    ctx.lineWidth = 2; // Толщина линии
+                } else if (point.event === 'draw') {
+                    ctx.lineTo(point.x, point.y); // Рисование линии
+                    ctx.stroke();
+                } else if (point.event === 'stop') {
+                    ctx.closePath(); // Завершение пути
+                }
+
+                index++;
+                requestAnimationFrame(animate); // Следующий кадр анимации
+            }
+
+            animate(); // Запуск анимации
+        }
+    </script>
+</body>
+</html>

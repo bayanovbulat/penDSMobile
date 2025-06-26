@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handwriting Input with Touch Area</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+        }
+        #canvas {
+            border: 2px solid #000;
+            background-color: #f9f9f9;
+            touch-action: none;
+            width: 90%;
+            height: 60vh;
+            max-width: 500px;
+        }
+        #saveButton {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 18px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #saveButton:active {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Handwriting Input with Touch Area</h1>
+    <canvas id="canvas"></canvas>
+    <button id="saveButton">Save</button>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let drawing = false;
+        let points = [];
+        let startTime = null;
+
+        // Устанавливаем размер холста
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Функция для получения координат и данных о касании
+        function getTouchPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            return {
+                x: touch.clientX - rect.left,
+                y: touch.clientY - rect.top,
+                radiusX: touch.radiusX || 1, // Радиус по X
+                radiusY: touch.radiusY || 1, // Радиус по Y
+                force: touch.force || 1      // Сила нажатия
+            };
+        }
+
+        // Расчет площади соприкосновения
+        function calculateArea(radiusX, radiusY) {
+            return Math.PI * radiusX * radiusY;
+        }
+
+        // Обработка событий для мыши и касаний
+        function startDrawing(x, y, radiusX, radiusY, force) {
+            drawing = true;
+            startTime = Date.now();
+            const area = calculateArea(radiusX, radiusY);
+            points.push({ x, y, time: startTime, event: 'start', area, force });
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+
+        function draw(x, y, radiusX, radiusY, force) {
+            if (drawing) {
+                const currentTime = Date.now();
+                const area = calculateArea(radiusX, radiusY);
+                points.push({ x, y, time: currentTime, event: 'draw', area, force });
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+        }
+
+        function stopDrawing() {
+            drawing = false;
+            const endTime = Date.now();
+            points.push({ x: null, y: null, time: endTime, event: 'stop', area: null, force: null });
+        }
+
+        // События для мыши
+        canvas.addEventListener('mousedown', (e) => {
+            startDrawing(e.offsetX, e.offsetY, 1, 1, 1); // Для мыши используем фиктивные значения
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            draw(e.offsetX, e.offsetY, 1, 1, 1); // Для мыши используем фиктивные значения
+        });
+
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseleave', stopDrawing);
+
+        // События для касаний
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const pos = getTouchPos(e);
+            startDrawing(pos.x, pos.y, pos.radiusX, pos.radiusY, pos.force);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const pos = getTouchPos(e);
+            draw(pos.x, pos.y, pos.radiusX, pos.radiusY, pos.force);
+        });
+
+        canvas.addEventListener('touchend', stopDrawing);
+
+        // Сохранение данных в Excel
+        document.getElementById('saveButton').addEventListener('click', () => {
+            const wsData = points.map(point => [point.x, point.y, point.time, point.event, point.area, point.force]);
+            const ws = XLSX.utils.aoa_to_sheet([['X', 'Y', 'Time (ms)', 'Event', 'Area', 'Force'], ...wsData]);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Coordinates');
+
+            // Получение текущей даты и времени
+            const f_now = new Date();
+            const f_year = String(f_now.getFullYear()); // Год (например, 2023)
+            const f_month = String(f_now.getMonth() + 1).padStart(2, '0'); // Месяц (01-12)
+            const f_day = String(f_now.getDate()).padStart(2, '0'); // День (01-31)
+            const f_hours = String(f_now.getHours()).padStart(2, '0'); // Часы (00-23)
+            const f_minutes = String(f_now.getMinutes()).padStart(2, '0'); // Минуты (00-59)
+            const f_seconds = String(f_now.getSeconds()).padStart(2, '0'); // Секунды (00-59)
+
+            // Формирование имени файла
+            const fileName = `coordinates_${f_year}_${f_month}_${f_day}_${f_hours}_${f_minutes}_${f_seconds}.xls`;
+
+            // Сохранение файла
+            XLSX.writeFile(wb, fileName, { bookType: 'biff8' });
+            location.reload(); //перезагрузить страницу
+        });
+    </script>
+</body>
+</html>
